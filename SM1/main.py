@@ -3,6 +3,7 @@ import pickle
 from sklearn import svm
 
 EXTRACT_FEATURES = False
+EXTRACT_TEST_FEATURES = True
 
 #np.set_printoptions(threshold=np.nan)
 training_data = None
@@ -31,8 +32,32 @@ print(training_label)
 clf = svm.SVC()
 svm = clf.fit(training_data, training_label)
 
-test_data, test_label, test_time = extract_features(filename='test_set.csv')
 
+test_data = None
+test_label = None
+test_time = None
+if EXTRACT_TEST_FEATURES:
+    test_data, test_label, test_time = extract_features(filename='test_set.csv')
+    
+    with open('test_data.file', 'wb') as fp:
+        pickle.dump(test_data, fp)
+    with open('test_label.file', 'wb') as fp:
+        pickle.dump(test_label, fp)
+    with open('test_times.file', 'wb') as fp:
+        pickle.dump(test_time, fp)
+else:
+    file = open("test_data.file", 'rb')
+    test_data = pickle.load(file)
+    file.close()
+
+    file = open("test_label.file", 'rb')
+    test_label = pickle.load(file)
+    file.close()
+    
+    file = open("test_times.file", 'rb')
+    test_time = pickle.load(file)
+    file.close()
+    
 predicted_label = svm.predict(test_data)
 
 true_positives = 0
