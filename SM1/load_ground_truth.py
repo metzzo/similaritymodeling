@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def load_data(file="ground-truth.csv"):
+def load_data(file):
 
     df = pd.read_csv(file)
 
@@ -20,4 +20,4 @@ def load_data(file="ground-truth.csv"):
 
     return df
 
-print(load_data())
+# print(load_data())
