@@ -2,15 +2,28 @@ from SM1.feature_extraction import extract_features
 import pickle
 from sklearn import svm
 
+EXTRACT_FEATURES = False
+
 #np.set_printoptions(threshold=np.nan)
+training_data = None
+training_label = None
 
-training_data, training_label, _ = extract_features(filename='ground-truth.csv')
+if EXTRACT_FEATURES:
+    training_data, training_label, _ = extract_features(filename='ground-truth.csv')
 
-with open('training_data.file', 'wb') as fp:
-    pickle.dump(training_data, fp)
+    with open('training_data.file', 'wb') as fp:
+        pickle.dump(training_data, fp)
 
-with open('label.file', 'wb') as fp:
-    pickle.dump(training_label, fp)
+    with open('label.file', 'wb') as fp:
+        pickle.dump(training_label, fp)
+else:
+    file = open("training_data.file", 'rb')
+    training_data = pickle.load(file)
+    file.close()
+
+    file = open("label.file", 'rb')
+    training_label = pickle.load(file)
+    file.close()
 
 print(training_data)
 print(training_label)
@@ -18,7 +31,7 @@ print(training_label)
 clf = svm.SVC()
 svm = clf.fit(training_data, training_label)
 
-test_data, test_label, test_time = extract_features(filename='ground-truth.csv')
+test_data, test_label, test_time = extract_features(filename='test_set.csv')
 
 predicted_label = svm.predict(test_data)
 
