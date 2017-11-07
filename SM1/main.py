@@ -1,6 +1,8 @@
 from SM1.feature_extraction import extract_features
 import pickle
 from sklearn import svm
+from matplotlib import pyplot as plt
+import numpy as np
 
 EXTRACT_FEATURES = False
 EXTRACT_TEST_FEATURES = True
@@ -28,6 +30,28 @@ else:
 
 print(training_data)
 print(training_label)
+
+true_data = []
+false_data = []
+for index, value in enumerate(training_label):
+    if value:
+        true_data.append(training_data[index])
+    else:
+        false_data.append(training_data[index])
+
+x_vals = [x[0] for x in false_data]
+y_vals = [x[1] for x in false_data]
+plt.scatter(x=x_vals, y=y_vals)
+
+x_vals = [x[0] for x in true_data]
+y_vals = [x[1] for x in true_data]
+
+plt.scatter(x=x_vals, y=y_vals)
+
+plt.xlabel("ZCR")
+plt.ylabel("RMS")
+plt.legend(loc=2)
+plt.show()
 
 clf = svm.SVC()
 svm = clf.fit(training_data, training_label)
