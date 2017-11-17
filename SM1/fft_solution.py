@@ -21,9 +21,6 @@ def classify(filename):
     plots = []
     count = 0
     for index, row in df.iterrows():
-        if index < 5:
-            continue
-
         filename = row['name']
         ground_truth_jump1 = row['j1']
         ground_truth_jump2 = row['j2']
