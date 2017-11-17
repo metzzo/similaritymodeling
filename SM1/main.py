@@ -4,7 +4,7 @@ from sklearn import svm
 from matplotlib import pyplot as plt
 import numpy as np
 
-EXTRACT_FEATURES = False
+EXTRACT_FEATURES = True
 EXTRACT_TEST_FEATURES = True
 
 #np.set_printoptions(threshold=np.nan)
@@ -30,7 +30,6 @@ else:
 
 print(training_data)
 print(training_label)
-
 true_data = []
 false_data = []
 for index, value in enumerate(training_label):
@@ -52,6 +51,7 @@ plt.xlabel("ZCR")
 plt.ylabel("RMS")
 plt.legend(loc=2)
 plt.show()
+
 
 clf = svm.SVC()
 svm = clf.fit(training_data, training_label)

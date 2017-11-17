@@ -36,6 +36,7 @@ def extract_features(filename):
         # Feature Extraction
 
         #hist = {}
+        """
         for i in range(0, len(left_audio), int(44100/20)):
             chunk = np.array(left_audio[i:i + int(44100/10)].tolist())
 
@@ -50,13 +51,37 @@ def extract_features(filename):
                 training_data.append([zero_crosses, rms])
 
                 jump = False
-                if jump1 >= 0 and (jump1 - 2 <= sec <= jump1 + 2):
+                if jump1 >= 0 and (jump1 - 0.25 <= sec <= jump1 + 0.25):
                     jump = True
-                if jump2 >= 0 and (jump2 - 2 <= sec <= jump2 + 2):
+                if jump2 >= 0 and (jump2 - 0.25 <= sec <= jump2 + 0.25):
                     jump = True
 
                 training_label.append(jump)
-                time_lookup.append(sec)
+                time_lookup.append(sec
+        """
+        # FFT auf 1 sekunden Segments
+
+        step_size = 1024
+        window = np.hamming(1024)
+        #for i in range(0, len(left_audio), int(step_size)):
+        for i in range(44100*14, 44100*17, int(step_size)):
+            chunk = np.array(left_audio[i:i + int(step_size)].tolist())
+
+            audio_fft = fft(chunk * window)
+            audio_fft = [abs(a) for a in audio_fft]
+            #audio_fft = [0 if abs(a) < 1000 else abs(a) for a in audio_fft]
+            slice_sum = []
+            for j in range(5000, 44100, 500):
+                slice = audio_fft[j:j+500]
+
+                slice_sum.append(sum(slice))
+            total_sum = sum(slice_sum)
+            print("Second " + str(i/44100))
+            print("Slice Sum " + str(slice_sum))
+            print("Total Sum " + str(total_sum))
+
+
+
 
     return (training_data, training_label, time_lookup)
 
