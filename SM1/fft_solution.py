@@ -67,7 +67,7 @@ def classify(filename):
             final_jumps.append(first)
             jumps = jumps[1:]
 
-        final_jumps = sorted(final_jumps, key=lambda jump: jump[1])
+        final_jumps = sorted(final_jumps, key=lambda jump: -jump[1])
         final_jumps = final_jumps[:2]
         print(final_jumps)
 
