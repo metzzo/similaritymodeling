@@ -18,9 +18,12 @@ def classify(filename):
     df = load_data(file=filename)
 
     result_set = []
-
+    plots = []
     count = 0
     for index, row in df.iterrows():
+        if index < 5:
+            continue
+
         filename = row['name']
         ground_truth_jump1 = row['j1']
         ground_truth_jump2 = row['j2']
@@ -36,7 +39,7 @@ def classify(filename):
         absS = np.transpose(absS)
         sum_bins = []
         for bin in absS:
-            sum_bins.append(sum(bin[350:]))
+            sum_bins.append(sum(bin[220:]))
 
         second_bins = []
         sec = 44100.0/513.0
@@ -46,9 +49,14 @@ def classify(filename):
 
             bin_index += sec
 
+        #plots.append(plt.plot(second_bins, label=filename)[0])
+        #plt.legend(handles=plots)
+        #plt.ylabel('Sum')
+        #plt.show()
+
         jumps = []
         for index, value in enumerate(second_bins):
-            if value > 30:
+            if value > 5:
                 jumps.append((index, value))
 
         final_jumps = []
@@ -67,7 +75,7 @@ def classify(filename):
             final_jumps.append(first)
             jumps = jumps[1:]
 
-        final_jumps = sorted(final_jumps, key=lambda jump: jump[1])
+        final_jumps = sorted(final_jumps, key=lambda jump: -jump[1])
         final_jumps = final_jumps[:2]
         print(final_jumps)
 
