@@ -39,13 +39,16 @@ def extract_features(filename):
             print("Extract data for " + target_file)
 
             y, sr = librosa.load(target_file, sr=16000)
+            S = librosa.stft(y, win_length=20000, n_fft=20000, hop_length=16000, window=scipy.signal.hanning)
+            S = np.abs(S)
+            S = np.transpose(S)
 
-            S = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=160, n_fft=int(32000/2), hop_length=16000).T
+            T = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=160, n_fft=20000, hop_length=16000).T
             print("Sampling Rate: " + str(sr))
             print("MFCC: " + str(S))
             print("Shape: " + str(S.shape))
 
-            entry = GroundTruthEntry(filename=audio_filename, jump1=jump1, jump2=jump2, data=S)
+            entry = GroundTruthEntry(filename=audio_filename, jump1=jump1, jump2=jump2, data=np.column_stack((S, T)))
             training_set.append(entry)
 
         with open(filename + '.file', 'wb') as fp:
@@ -112,14 +115,21 @@ def test_batch(test):
 training = extract_features(filename='ground-truth.csv')
 positives = extract_positives(training)
 
-learning_rate = 0.05
-num_steps = 5000
+learning_rate = 0.001
+num_steps = 1000
 batch_size = 200
 display_step = 100
 
-n_hidden_1 = 1000
-n_hidden_2 = 500
-num_input = 160
+n_hidden_1 = 5000
+n_hidden_2 = 4000
+n_hidden_3 = 3000
+n_hidden_4 = 2000
+n_hidden_5 = 1000
+n_hidden_6 = 500
+n_hidden_7 = 100
+n_hidden_8 = 10
+
+num_input = 10161
 num_classes = 2
 
 X = tf.placeholder("float", [None, num_input])
@@ -128,18 +138,36 @@ Y = tf.placeholder("float", [None, num_classes])
 weights = {
     'h1': tf.Variable(tf.random_normal([num_input, n_hidden_1])),
     'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([n_hidden_2, num_classes]))
+    'h3': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_3])),
+    'h4': tf.Variable(tf.random_normal([n_hidden_3, n_hidden_4])),
+    'h5': tf.Variable(tf.random_normal([n_hidden_4, n_hidden_5])),
+    'h6': tf.Variable(tf.random_normal([n_hidden_5, n_hidden_6])),
+    'h7': tf.Variable(tf.random_normal([n_hidden_6, n_hidden_7])),
+    'h8': tf.Variable(tf.random_normal([n_hidden_7, n_hidden_8])),
+    'out': tf.Variable(tf.random_normal([n_hidden_8, num_classes]))
 }
 biases = {
     'b1': tf.Variable(tf.random_normal([n_hidden_1])),
     'b2': tf.Variable(tf.random_normal([n_hidden_2])),
+    'b3': tf.Variable(tf.random_normal([n_hidden_3])),
+    'b4': tf.Variable(tf.random_normal([n_hidden_4])),
+    'b5': tf.Variable(tf.random_normal([n_hidden_5])),
+    'b6': tf.Variable(tf.random_normal([n_hidden_6])),
+    'b7': tf.Variable(tf.random_normal([n_hidden_7])),
+    'b8': tf.Variable(tf.random_normal([n_hidden_8])),
     'out': tf.Variable(tf.random_normal([num_classes]))
 }
 
 def neural_net(x):
     layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
     layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
+    layer_3 = tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])
+    layer_4 = tf.add(tf.matmul(layer_3, weights['h4']), biases['b4'])
+    layer_5 = tf.add(tf.matmul(layer_4, weights['h5']), biases['b5'])
+    layer_6 = tf.add(tf.matmul(layer_5, weights['h6']), biases['b6'])
+    layer_7 = tf.add(tf.matmul(layer_6, weights['h7']), biases['b7'])
+    layer_8 = tf.add(tf.matmul(layer_7, weights['h8']), biases['b8'])
+    out_layer = tf.matmul(layer_8, weights['out']) + biases['out']
     return out_layer
 
 logits = neural_net(X)
@@ -203,15 +231,32 @@ with tf.Session(config=tf.ConfigProto(
                   "{:.4f}".format(loss) + ", Training Accuracy= " + \
                   "{:.3f}".format(acc))
 
-    oSaver = tf.train.Saver()
-    oSaver.save(sess, "models/tensorflow.model")
+    #oSaver = tf.train.Saver()
+    #oSaver.save(sess, "models/tensorflow.model")
 
     print("Optimization Finished!")
 
     test = extract_features(filename='test-truth.csv')
     test_x, test_y = test_batch(test=test)
-    #print(test_x)
-    #print(test_y)
+
+    prediction = tf.argmax(logits, 1)
+    pred = sess.run(prediction, feed_dict={X: test_x,
+                                            Y: test_y})
+    time = 0
+    lastEntry = test[0]
+    index = 0
+    for i in range(0, len(pred)):
+        if time > lastEntry.data.shape[0]:
+            time = 0
+            lastEntry = test[index]
+            index += 1
+        else:
+            time += 1
+        if pred[i] == 0:
+            print("Filename " + lastEntry.filename + " jump at " +
+                  str(int(time/60)) + ":" + str(time%60) + "s predicted.")
+
+
     # Calculate accuracy for MNIST test images
     print("Testing Accuracy:", \
         sess.run([accuracy], feed_dict={X: test_x,
