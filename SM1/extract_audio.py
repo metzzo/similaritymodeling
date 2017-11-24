@@ -11,7 +11,7 @@ for file in os.listdir(directory_path):
         full_filename = os.path.abspath(source_directory) + "\\" + filename
         target_filename = os.path.abspath(target_directory) + "\\" + filename + ".wav"
         print("Convert: " + full_filename)
-        command = "ffmpeg -i " + full_filename + " -ab 160k -ac 2 -ar 44100 -vn " + target_filename
+        command = "ffmpeg -i " + full_filename + " -ab 160k -ac 2 -ar 16000 -vn " + target_filename
         subprocess.call(command, shell=True)
 
 

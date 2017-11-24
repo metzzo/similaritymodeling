@@ -11,7 +11,7 @@ def load_data(file):
             second = int(time[3:5])
             return minute*60 + second
         else:
-            return -1000
+            return -1
 
     j1 = df["Jump #1"].apply(convert_time)
     j2 = df["Jump #2"].apply(convert_time)
