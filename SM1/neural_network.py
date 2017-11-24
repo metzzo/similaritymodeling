@@ -40,7 +40,7 @@ def extract_features(filename):
 
             y, sr = librosa.load(target_file, sr=16000)
 
-            S = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40, n_fft=32000, hop_length=16000).T
+            S = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=160, n_fft=int(32000/2), hop_length=16000).T
             print("Sampling Rate: " + str(sr))
             print("MFCC: " + str(S))
             print("Shape: " + str(S.shape))
@@ -59,29 +59,37 @@ def extract_features(filename):
 
     return training_set
 
-def next_batch(training, batch_size):
-    entry_index = random.randint(0, len(training) - 1)
-    entry = training[entry_index]
+def next_batch(training, positives, batch_size):
 
     batch = []
     labels = []
-    if entry.jump1 >= 0:
-        batch.append(entry.data[entry.jump1])
-        labels.append([1, 0])
-        batch_size -= 1
-    if entry.jump2 >= 0:
-        batch.append(entry.data[entry.jump2])
-        labels.append([1, 0])
-        batch_size -= 1
 
+    ratio = 1/2
 
-    for i in range(0, batch_size):
+    for _ in range(0, int(batch_size * ratio)):
+        positive = positives[random.randint(0, len(positives) - 1)]
+        batch.append(positive)
+        labels.append([1, 0])
+
+    for _ in range(0, int(batch_size * (1 - ratio))):
+        entry_index = random.randint(0, len(training) - 1)
+        entry = training[entry_index]
         pos = random.randint(0, entry.data.shape[0] - 1)
+
         if pos != entry.jump1 and pos != entry.jump2:
             batch.append(entry.data[pos])
             labels.append([0, 1])
 
     return batch, labels
+
+def extract_positives(training):
+    positives = []
+    for entry in training:
+        if entry.jump1 >= 0:
+            positives.append(entry.data[entry.jump1])
+        if entry.jump2 >= 0:
+            positives.append(entry.data[entry.jump2])
+    return positives
 
 def test_batch(test):
     batch = []
@@ -102,15 +110,16 @@ def test_batch(test):
     return batch, labels
 
 training = extract_features(filename='ground-truth.csv')
+positives = extract_positives(training)
 
-learning_rate = 0.1
-num_steps = 500
-batch_size = 250
+learning_rate = 0.05
+num_steps = 5000
+batch_size = 200
 display_step = 100
 
-n_hidden_1 = 128
-n_hidden_2 = 4
-num_input = 40
+n_hidden_1 = 1000
+n_hidden_2 = 500
+num_input = 160
 num_classes = 2
 
 X = tf.placeholder("float", [None, num_input])
@@ -140,14 +149,21 @@ loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
     logits=logits,
     labels=Y)
 )
+loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+    logits=logits, labels=Y))
 
 
-ratio = 1/45
+optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+train_op = optimizer.minimize(loss_op)
 
+"""
+ratio = 1/2
 cost = tf.reduce_mean(-tf.reduce_sum((ratio)*tf.log(logits) + (1 - ratio)*tf.log(1-logits), reduction_indices=1))
 
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-train_op = optimizer.minimize(cost)
+train_op = optimizer.minimize(cost)"""
+
+
 
 # Evaluate model (with test logits, for dropout to be disabled)
 
@@ -176,7 +192,7 @@ with tf.Session(config=tf.ConfigProto(
     sess.run(init)
 
     for step in range(1, num_steps+1):
-        batch_x, batch_y = next_batch(training=training, batch_size=batch_size)
+        batch_x, batch_y = next_batch(training=training, positives=positives, batch_size=batch_size)
         # Run optimization op (backprop)
         sess.run(train_op, feed_dict={X: batch_x, Y: batch_y})
         if step % display_step == 0 or step == 1:
@@ -209,6 +225,9 @@ with tf.Session(config=tf.ConfigProto(
     print("Testing F-Score:", \
         sess.run([fscore], feed_dict={X: test_x,
                                       Y: test_y}))
-    print("Testing True Positives & False Positives:", \
-        sess.run([TP, FP], feed_dict={X: test_x,
+    print("Testing True Positives & True Negatives:", \
+        sess.run([TP, TN], feed_dict={X: test_x,
+                                      Y: test_y}))
+    print("Testing False Positives & False Negatives:", \
+        sess.run([FP, FN], feed_dict={X: test_x,
                                       Y: test_y}))
