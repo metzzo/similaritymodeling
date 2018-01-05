@@ -5,7 +5,6 @@ import cv2
 import os
 from time import sleep
 from matplotlib import pyplot as plt
-import SM2.skin_detector as skin_detector
 
 def detect_skin(frame):
     lower = np.array([0, 2, 80], dtype="uint8")
@@ -23,12 +22,12 @@ def detect_skin(frame):
     return skin, skinMask
 
 target_directory = os.path.abspath("../../dataset/") + '\\'
-target_file = target_directory +  "1_2015-10-03_13-42-32.mp4" # "1_2015-10-03_18-08-15.mp4" #
+target_file = target_directory +   "1_2015-10-03_18-08-15.mp4" #"1_2015-10-03_13-42-32.mp4" #
 
 cap = cv2.VideoCapture(target_file)
 
-cap.set(cv2.CAP_PROP_POS_MSEC , (9*60 +45) * 1000)
-#cap.set(cv2.CAP_PROP_POS_MSEC , (6*60 +11) * 1000)
+#cap.set(cv2.CAP_PROP_POS_MSEC , (9*60 +45) * 1000)
+cap.set(cv2.CAP_PROP_POS_MSEC , (6*60 +11) * 1000)
 
 
 def find_mounting(frame):
@@ -74,34 +73,7 @@ while(cap.isOpened()):
 
     im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-    contours = [c for c in contours if cv2.contourArea(c) > 50]
-    """
-    LENGTH = len(contours)
-    status = np.zeros((LENGTH, 1))
-
-    for i, cnt1 in enumerate(contours):
-        x = i
-        if i != LENGTH - 1:
-            for j, cnt2 in enumerate(contours[i + 1:]):
-                x = x + 1
-                dist = find_if_close(cnt1, cnt2)
-                if dist == True:
-                    val = min(status[i], status[x])
-                    status[x] = status[i] = val
-                else:
-                    if status[x] == status[i]:
-                        status[x] = i + 1
-
-    unified = []
-    maximum = int(status.max()) + 1
-    for i in range(maximum):
-        pos = np.where(status == i)[0]
-        if pos.size != 0:
-            cont = np.vstack(contours[i] for i in pos)
-            hull = cv2.convexHull(cont)
-            unified.append(hull)
-
-    countours = unified"""
+    contours = [c for c in contours if cv2.contourArea(c) > 50 and cv2.contourArea(c) < 100*100]
 
     cv2.drawContours(skin, contours, -1, 255, 3)
 
