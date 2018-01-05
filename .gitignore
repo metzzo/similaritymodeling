@@ -39,3 +39,5 @@ tmtagsHistory
 *.sublime-project
 *.sublime-workspace
 .bundle
+SM1/ground-truth.csv.file
+SM1/test-truth.csv.file
