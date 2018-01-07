@@ -10,13 +10,13 @@ from load_ground_truth import load_data
 import librosa
 import librosa.display
 
-WINCH_DELTA = 1
+JUMP_DELTA = 1
 BACKGROUND_NOISE_SAMPLES = 5
-BACKGROUND_NOISE_DURATION = WINCH_DELTA*2
+BACKGROUND_NOISE_DURATION = JUMP_DELTA*2
 
-def get_winch_frame(audio, sample_rate, time):
-    start_time = (time - WINCH_DELTA) * sample_rate
-    end_time = (time + WINCH_DELTA) * sample_rate
+def get_jump_frame(audio, sample_rate, time):
+    start_time = (time - JUMP_DELTA) * sample_rate
+    end_time = (time + JUMP_DELTA) * sample_rate
     return audio[start_time:end_time]
 
 
@@ -31,28 +31,28 @@ def extract_feature(X, sample_rate):
     return np.hstack([mfccs, chroma, mel, contrast, tonnetz])
 
 
-def extract_winch(audio, sample_rate, time):
-    audio = get_winch_frame(audio=audio, sample_rate=sample_rate, time=time)
+def extract_jump(audio, sample_rate, time):
+    audio = get_jump_frame(audio=audio, sample_rate=sample_rate, time=time)
     return extract_feature(X=audio, sample_rate=sample_rate)
 
 
-def extract_background_audio(audio, sample_rate, winch1, winch2):
+def extract_background_audio(audio, sample_rate, jump1, jump2):
     snippets = np.array([])
 
-    if winch1 >= 0:
-        # load part before winches
-        snippets = np.append(snippets, audio[0:(winch1 - WINCH_DELTA) * sample_rate])
+    if jump1 >= 0:
+        # load part before jumpes
+        snippets = np.append(snippets, audio[0:(jump1 - JUMP_DELTA) * sample_rate])
 
-        if winch2 >= 0:
-            # get part between winch1 and winch2
-            snippets = np.append(snippets, audio[(winch1 + WINCH_DELTA) * sample_rate:(winch2 - WINCH_DELTA) * sample_rate])
-            # get part after winch2
-            snippets = np.append(snippets, audio[(winch2 + WINCH_DELTA) * sample_rate:])
+        if jump2 >= 0:
+            # get part between jump1 and jump2
+            snippets = np.append(snippets, audio[(jump1 + JUMP_DELTA) * sample_rate:(jump2 - JUMP_DELTA) * sample_rate])
+            # get part after jump2
+            snippets = np.append(snippets, audio[(jump2 + JUMP_DELTA) * sample_rate:])
         else:
-            # no other winch => load remaining file
-            snippets = np.append(snippets, audio[(winch1 + WINCH_DELTA) * sample_rate:])
+            # no other jump => load remaining file
+            snippets = np.append(snippets, audio[(jump1 + JUMP_DELTA) * sample_rate:])
     else:
-        # no winches: load entire file
+        # no jumpes: load entire file
         snippets = np.append(snippets, audio)
 
     return snippets
@@ -74,8 +74,8 @@ def extract_feature_set(filename, noise_samples=BACKGROUND_NOISE_SAMPLES):
 
         for index, row in df.iterrows():
             audio_filename = row['name']
-            winch1 = row['w1']
-            winch2 = row['w2']
+            jump1 = row['j1']
+            jump2 = row['j2']
 
             target_directory = os.path.abspath("../../audio_dataset/") + '\\'
             target_file = target_directory + audio_filename + '.wav'
@@ -83,19 +83,19 @@ def extract_feature_set(filename, noise_samples=BACKGROUND_NOISE_SAMPLES):
 
             audio, sample_rate = librosa.load(target_file)
 
-            if winch1 >= 0:
-                print("Extract winch1 feature")
-                winch_feature = extract_winch(audio=audio, sample_rate=sample_rate, time=winch1)
-                features = np.vstack([features, winch_feature])
+            if jump1 >= 0:
+                print("Extract jump1 feature")
+                jump_feature = extract_jump(audio=audio, sample_rate=sample_rate, time=jump1)
+                features = np.vstack([features, jump_feature])
                 labels = np.vstack([labels, [1, 0]])
 
-            if winch2 >= 0:
-                print("Extract winch2 feature")
-                winch_feature = extract_winch(audio=audio, sample_rate=sample_rate, time=winch2)
-                features = np.vstack([features, winch_feature])
+            if jump2 >= 0:
+                print("Extract jump2 feature")
+                jump_feature = extract_jump(audio=audio, sample_rate=sample_rate, time=jump2)
+                features = np.vstack([features, jump_feature])
                 labels = np.vstack([labels, [1, 0]])
 
-            audio_noise = extract_background_audio(audio=audio, sample_rate=sample_rate, winch1=winch1, winch2=winch2)
+            audio_noise = extract_background_audio(audio=audio, sample_rate=sample_rate, jump1=jump1, jump2=jump2)
             for i in range(1, noise_samples):
                 print("Extract background feature: " + str(i))
                 noise_feature = extract_background_feature(audio=audio_noise, sample_rate=sample_rate)
@@ -184,9 +184,9 @@ print("F-Score:", round(f,3))
 """
 Result on my machine:
 
-Sample Size: 422
-Precision: 0.986
-Recall: 0.986
-F-Score: 0.986
+Sample Size: 420
+Precision: 0.985
+Recall: 0.985
+F-Score: 0.985
 
 """
