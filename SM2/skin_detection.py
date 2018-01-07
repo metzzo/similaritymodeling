@@ -34,7 +34,7 @@ with tf.Session() as sess:
     y_pred = sess.run(tf.argmax(y_, 1), feed_dict={X: test_features})
     y_true = sess.run(tf.argmax(test_labels, 1))
 
-    save_path = saver.save(sess, os.path.abspath('.') + "skin_detection_model.tf")
+    save_path = saver.save(sess, os.path.abspath('.') + "/skin_detection_model.tf")
 
 
 fig = plt.figure(figsize=(10,8))
@@ -55,7 +55,6 @@ print("F-Score:", round(f,3))
 
 Sample Size: 24505
 Precision: 0.998
-Recall: 0.974
-F-Score: 0.986
-
+Recall: 0.987
+F-Score: 0.992
 """

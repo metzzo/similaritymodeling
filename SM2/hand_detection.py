@@ -1,19 +1,32 @@
 import cv2
+import librosa
 
 import numpy as np
 import cv2
 import os
-from time import sleep
 import tensorflow as tf
-from matplotlib import pyplot as plt
 
+from SM1.jump_detection_model import load_jump_detection_model, extract_feature as jump
 from SM2.skin_detection_model import load_skin_detection_model
 
-tf.reset_default_graph()
-X, _, y_, _, _, _, _  = load_skin_detection_model()
-saver = tf.train.Saver()
-sess = tf.Session()
-saver.restore(sess, os.path.abspath('.') + "skin_detection_model.tf")
+
+skin_graph = tf.Graph()
+with skin_graph.as_default():
+    X_skin, _, y_skin, _, _, _, _ = load_skin_detection_model()
+
+jump_graph = tf.Graph()
+with jump_graph.as_default():
+    X_jump, _, y_jump, _, _, _, _ = load_jump_detection_model()
+    saver_jump = tf.train.Saver()
+    sess_jump = tf.Session()
+    saver_jump.restore(sess_jump, os.path.abspath('.') + "/../SM1/jump_detection_model.tf")
+
+with skin_graph.as_default():
+    saver_skin = tf.train.Saver()
+    sess_skin = tf.Session()
+    saver_skin.restore(sess_skin, os.path.abspath('.') + "/skin_detection_model.tf")
+
+
 
 def amount_of_skin(frame):
     h = frame.shape[0]
@@ -25,7 +38,7 @@ def amount_of_skin(frame):
             pixel = frame[y, x]
             input[y*w + x] = np.array([pixel])
 
-    pred = sess.run(tf.argmax(y_, 1), feed_dict={X: input})
+    pred = sess_skin.run(tf.argmax(y_skin, 1), feed_dict={X_skin: input})
     return pred.sum()
 
 
@@ -38,24 +51,38 @@ def detect_skin(frame):
     skinMask = cv2.inRange(frame, lower, upper)
 
     # blur mask (GAUSS EVERYWHERE \o/)
-    skinMask = cv2.GaussianBlur(skinMask, (11, 11), 0)
+    skinMask = cv2.GaussianBlur(skinMask, (15, 15), 0)
 
     # mask the frame
     skin = cv2.bitwise_and(frame, frame, mask=skinMask)
 
     return skin, skinMask
 
-target_directory = os.path.abspath("../../dataset/") + '\\'
-target_file = target_directory + "1_2015-10-03_18-08-15.mp4" #"1_2015-10-03_13-42-32.mp4" #
+filename = "1_2015-10-03_18-08-15.mp4" #"1_2015-10-03_13-42-32.mp4" #
 
+target_directory = os.path.abspath("../../dataset/") + '\\'
+target_file = target_directory + filename
 cap = cv2.VideoCapture(target_file)
 
 #cap.set(cv2.CAP_PROP_POS_MSEC , (9*60 +45) * 1000)
-cap.set(cv2.CAP_PROP_POS_MSEC , (6*60 +11) * 1000)
+cap.set(cv2.CAP_PROP_POS_MSEC , (6*60 + 11) * 1000)
+
+target_directory = os.path.abspath("../../audio_dataset/") + '\\'
+target_audio_file = target_directory + filename + '.wav'
+audio, sample_rate = librosa.load(target_audio_file)
 
 hand_positions = []
 while(cap.isOpened()):
     ret, frame = cap.read()
+
+    current_second = int(cap.get(cv2.CAP_PROP_POS_MSEC)/1000)
+
+    is_jump = 1
+    if current_second > 2 and current_second < len(audio)/sample_rate - 2:
+        audio_delta = audio[(current_second - 1)*sample_rate:(current_second + 1)*sample_rate]
+        input = np.array([jump.extract_feature(X=audio_delta, sample_rate=sample_rate)])
+        is_jump = sess_jump.run(tf.argmax(y_jump, 1), feed_dict={X_jump: input})[0]
+
     original_frame = frame
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -64,39 +91,90 @@ while(cap.isOpened()):
 
     ret, thresh = cv2.threshold(skinMask, 180, 255, 0)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (40, 40))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (60, 60))
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
     im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-    contours = [c for c in contours if cv2.contourArea(c) > 50 and cv2.contourArea(c) < 100*100]
-
-    cv2.drawContours(skin, contours, -1, 255, 3)
-
-    def find_best_contour(c):
+    filtered_contours = []
+    for c in contours:
+        c_area = cv2.contourArea(c)
         x, y, w, h = cv2.boundingRect(c)
 
-        # now count number of pixels of skin
-        c_area = cv2.contourArea(c)
+        if c_area > 50 * 50 and c_area < 100 * 100:
+            filtered_contours.append(c)
+
+    contours = filtered_contours
+
+    def skin_ratio(c):
+        x, y, w, h = cv2.boundingRect(c)
 
         # count number of pixels
         candidate = skin[y:y + h, x:x + w]
         skin_area = amount_of_skin(candidate)
 
-        return -skin_area
+        return skin_area/(w*h)
 
-    contours = sorted(contours, key=find_best_contour)
+    selected_contours = []
+    sr_values = [0]*len(contours)
+    er_values = [0]*len(contours)
+
+    i = 0
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        candidate = skin[y:y + h, x:x + w]
+        edges = cv2.Canny(candidate, 25, 3*25)
+
+        # the bigger a contour the more edges are allowed
+        c_area = cv2.contourArea(c)
+
+        sr = skin_ratio(c)
+
+        # the more pixel detected by canny the rougher the surface is
+        roughness = 0
+        for y in range(0, h):
+            for x in range(0, w):
+                pixel = edges[y, x]
+                if pixel == 0:
+                    roughness += 1
+
+        er = roughness/(w*h)
+
+        # print(er, " Skin: ", sr)
+
+        sr_values[i] = sr
+        er_values[i] = er
+
+
+        i += 1
+
+    retry = 0
+    while len(selected_contours) < 2 and retry < 5:
+        i = 0
+        for c in contours:
+            sr = sr_values[i]
+            er = er_values[i]
+            if sr <= 0.8 + retry*0.05 and sr >= 0.5 - retry*0.05 and er < 0.8 + retry*0.05:
+                selected_contours.append(c)
+
+            i += 1
+        retry += 1
+
+
+
+    edges = cv2.Canny(skin, 25, 3*25)
+    cv2.drawContours(skin, contours, -1, 255, 3)
+    skin = np.bitwise_or(skin, edges[:, :, np.newaxis])
 
     def history_aware_rect(contour):
         hand_positions.append(contour)
 
         new_x, new_y, new_w, new_h = cv2.boundingRect(contour)
-        return new_x, new_y, new_w, new_h
 
-        final_x = new_x
-        final_y = new_y
-        final_w = new_w
-        final_h = new_h
+        final_x = 0
+        final_y = 0
+        final_w = 0
+        final_h = 0
 
         count = 0
         for c in hand_positions:
@@ -117,21 +195,24 @@ while(cap.isOpened()):
         final_w = int(final_w / count)
         final_h = int(final_h / count)
 
-        if len(hand_positions) > 30:
+        if len(hand_positions) > 10:
             hand_positions.pop(0)
 
         return (final_x, final_y, final_w, final_h)
 
 
-    if len(contours) > 0:
-        x, y, w, h = history_aware_rect(contours[0])
+    if len(selected_contours) > 0:
+        x, y, w, h = history_aware_rect(selected_contours[0])
 
         cv2.rectangle(original_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-    if len(contours) > 1:
-        x, y, w, h = history_aware_rect(contours[1])
+    if len(selected_contours) > 1:
+        x, y, w, h = history_aware_rect(selected_contours[1])
 
         cv2.rectangle(original_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(original_frame, 'Jump' if is_jump == 0 else "No Jump", (20, 80), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
     cv2.imshow("images", np.hstack([frame, original_frame, skin]))
 
@@ -141,10 +222,8 @@ while(cap.isOpened()):
     if cv2.waitKey(1) & 0xFF == ord('p'):
         print("wait")
 
-
-        frames.pop(0)
-
 cap.release()
 cv2.destroyAllWindows()
-sess.close()
+sess_skin.close()
+sess_jump.close()
 
