@@ -4,7 +4,31 @@ import numpy as np
 import cv2
 import os
 from time import sleep
+import tensorflow as tf
 from matplotlib import pyplot as plt
+
+from SM2.skin_detection_model import load_skin_detection_model
+
+tf.reset_default_graph()
+X, _, y_, _, _, _, _  = load_skin_detection_model()
+saver = tf.train.Saver()
+sess = tf.Session()
+saver.restore(sess, os.path.abspath('.') + "skin_detection_model.tf")
+
+def amount_of_skin(frame):
+    h = frame.shape[0]
+    w = frame.shape[1]
+
+    input = np.empty((w*h, 3))
+    for y in range(0, h):
+        for x in range(0, w):
+            pixel = frame[y, x]
+            input[y*w + x] = np.array([pixel])
+
+    pred = sess.run(tf.argmax(y_, 1), feed_dict={X: input})
+    return pred.sum()
+
+
 
 def detect_skin(frame):
     lower = np.array([0, 2, 80], dtype="uint8")
@@ -22,38 +46,12 @@ def detect_skin(frame):
     return skin, skinMask
 
 target_directory = os.path.abspath("../../dataset/") + '\\'
-target_file = target_directory +   "1_2015-10-03_18-08-15.mp4" #"1_2015-10-03_13-42-32.mp4" #
+target_file = target_directory + "1_2015-10-03_18-08-15.mp4" #"1_2015-10-03_13-42-32.mp4" #
 
 cap = cv2.VideoCapture(target_file)
 
 #cap.set(cv2.CAP_PROP_POS_MSEC , (9*60 +45) * 1000)
 cap.set(cv2.CAP_PROP_POS_MSEC , (6*60 +11) * 1000)
-
-
-def find_mounting(frame):
-    lower = np.array([40, 0, 180], dtype="uint8")
-    upper = np.array([90, 20, 255], dtype="uint8")
-
-    ropeMask = cv2.inRange(frame, lower, upper)
-
-    ropeMask = cv2.GaussianBlur(ropeMask, (7, 7), 0)
-    ropeFrame = cv2.bitwise_and(frame, frame, mask=ropeMask)
-
-    # edges = cv2.Canny(ropeFrame, 150, 200)
-    minLineLength = 50
-    maxLineGap = 50
-    lines = cv2.HoughLinesP(ropeMask, 1, np.pi / 180, 100, minLineLength, maxLineGap)
-    return lines
-
-def find_if_close(cnt1,cnt2):
-    row1,row2 = cnt1.shape[0],cnt2.shape[0]
-    for i in range(row1):
-        for j in range(row2):
-            dist = np.linalg.norm(cnt1[i]-cnt2[j])
-            if abs(dist) < 50 :
-                return True
-            elif i==row1-1 and j==row2-1:
-                return False
 
 hand_positions = []
 while(cap.isOpened()):
@@ -61,8 +59,6 @@ while(cap.isOpened()):
     original_frame = frame
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-
 
     skin, skinMask = detect_skin(frame)
 
@@ -79,20 +75,15 @@ while(cap.isOpened()):
 
     def find_best_contour(c):
         x, y, w, h = cv2.boundingRect(c)
+
+        # now count number of pixels of skin
         c_area = cv2.contourArea(c)
-        b_area = w * h
 
-        M = cv2.moments(c)
-        cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])
+        # count number of pixels
+        candidate = skin[y:y + h, x:x + w]
+        skin_area = amount_of_skin(candidate)
 
-        dx = cX - 320
-        dy = cY - 240
-
-        dist_to_center = np.sqrt(dx*dx + dy*dy)
-
-        return -c_area + dist_to_center
-
+        return -skin_area
 
     contours = sorted(contours, key=find_best_contour)
 
@@ -100,6 +91,7 @@ while(cap.isOpened()):
         hand_positions.append(contour)
 
         new_x, new_y, new_w, new_h = cv2.boundingRect(contour)
+        return new_x, new_y, new_w, new_h
 
         final_x = new_x
         final_y = new_y
@@ -125,7 +117,7 @@ while(cap.isOpened()):
         final_w = int(final_w / count)
         final_h = int(final_h / count)
 
-        if len(hand_positions) > 60:
+        if len(hand_positions) > 30:
             hand_positions.pop(0)
 
         return (final_x, final_y, final_w, final_h)
@@ -141,20 +133,9 @@ while(cap.isOpened()):
 
         cv2.rectangle(original_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-
-
-
-    """lines = find_mounting(frame)
-    if lines is not None:
-        for l in lines:
-            for line in l:
-                cv2.line(original_frame, (line[0], line[1]), (line[2], line[3]), (0, 255, 0), 2)
-            """
-
-
     cv2.imshow("images", np.hstack([frame, original_frame, skin]))
 
-    sleep(0.05)
+    # sleep(0.05)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
     if cv2.waitKey(1) & 0xFF == ord('p'):
@@ -165,4 +146,5 @@ while(cap.isOpened()):
 
 cap.release()
 cv2.destroyAllWindows()
+sess.close()
 

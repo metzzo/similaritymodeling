@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def load_data(file):
 
@@ -23,5 +22,3 @@ def load_data(file):
     df = pd.DataFrame({"name": df["Filename"], "j1": j1, "j2": j2, "w1": w1, "w2": w2}, columns=("name", "j1", "j2", "w1", "w2"))
 
     return df
-
-# print(load_data())
