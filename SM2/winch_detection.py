@@ -1,40 +1,73 @@
-from scipy.io import wavfile
-from scipy import signal
-from numpy.fft import fft
-
-#from scipy.signal import spectrogram
-import scipy
-import numpy as np
-import os
-import matplotlib.pyplot as plt
 import tensorflow as tf
+from sklearn.metrics import precision_recall_fscore_support
+import numpy as np
 import random
 import pickle
 import os.path
+import matplotlib.pyplot as plt
 from SM1.load_ground_truth import load_data
 
 import librosa
 import librosa.display
 
-DELTA_MFCC = 3
+WINCH_DELTA = 1
+BACKGROUND_NOISE_SAMPLES = 5
+BACKGROUND_NOISE_DURATION = WINCH_DELTA*2
 
-class GroundTruthEntry:
-    def __init__(self, filename, winch1, winch2, data):
-        self.filename = filename
-        self.winch1 = winch1
-        self.winch2 = winch2
-        self.data = data
-
-    def get_data_for(self, time):
-        arr = []
-        for i in range(time - DELTA_MFCC, time + DELTA_MFCC):
-            i = min(max(i, 0) , len(self.data) - 1)
-            arr.append(self.data[i])
-        return np.array(arr).flatten()
+def get_winch_frame(audio, sample_rate, time):
+    start_time = (time - WINCH_DELTA) * sample_rate
+    end_time = (time + WINCH_DELTA) * sample_rate
+    return audio[start_time:end_time]
 
 
-def extract_features(filename):
-    training_set = []
+def extract_feature(X, sample_rate):
+    stft = np.abs(librosa.stft(X))
+    mfccs = np.mean(librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=40).T, axis=0)
+    chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sample_rate).T, axis=0)
+    mel = np.mean(librosa.feature.melspectrogram(X, sr=sample_rate).T, axis=0)
+    contrast = np.mean(librosa.feature.spectral_contrast(S=stft, sr=sample_rate).T, axis=0)
+    tonnetz = np.mean(librosa.feature.tonnetz(y=librosa.effects.harmonic(X), sr=sample_rate).T, axis=0)
+
+    return np.hstack([mfccs, chroma, mel, contrast, tonnetz])
+
+
+def extract_winch(audio, sample_rate, time):
+    audio = get_winch_frame(audio=audio, sample_rate=sample_rate, time=time)
+    return extract_feature(X=audio, sample_rate=sample_rate)
+
+
+def extract_background_audio(audio, sample_rate, winch1, winch2):
+    snippets = np.array([])
+
+    if winch1 >= 0:
+        # load part before winches
+        snippets = np.append(snippets, audio[0:(winch1 - WINCH_DELTA) * sample_rate])
+
+        if winch2 >= 0:
+            # get part between winch1 and winch2
+            snippets = np.append(snippets, audio[(winch1 + WINCH_DELTA) * sample_rate:(winch2 - WINCH_DELTA) * sample_rate])
+            # get part after winch2
+            snippets = np.append(snippets, audio[(winch2 + WINCH_DELTA) * sample_rate:])
+        else:
+            # no other winch => load remaining file
+            snippets = np.append(snippets, audio[(winch1 + WINCH_DELTA) * sample_rate:])
+    else:
+        # no winches: load entire file
+        snippets = np.append(snippets, audio)
+
+    return snippets
+
+
+def extract_background_feature(audio, sample_rate):
+    pos = random.randint(0, int(len(audio) / sample_rate) - BACKGROUND_NOISE_DURATION) * sample_rate
+    audio = audio[pos:pos + BACKGROUND_NOISE_DURATION*sample_rate]
+    return extract_feature(X=audio, sample_rate=sample_rate)
+
+
+def extract_feature_set(filename, noise_samples=BACKGROUND_NOISE_SAMPLES):
+
+    features = np.empty((0, 193))
+    labels = np.empty((0, 2))
 
     if not os.path.isfile(filename+'.file'):
         df = load_data(file=filename)
@@ -48,213 +81,105 @@ def extract_features(filename):
             target_file = target_directory + audio_filename + '.wav'
             print("Extract data for " + target_file)
 
-            y, sr = librosa.load(target_file, sr=16000)
+            audio, sample_rate = librosa.load(target_file)
 
-            mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=50, n_fft=int(16000/2))
-            print("Sampling Rate: " + str(sr))
-            print("MFCC: " + str(mfccs))
-            print("Shape: " + str(mfccs.shape))
+            if winch1 >= 0:
+                print("Extract winch1 feature")
+                winch_feature = extract_winch(audio=audio, sample_rate=sample_rate, time=winch1)
+                features = np.vstack([features, winch_feature])
+                labels = np.vstack([labels, [1, 0]])
 
-            """import matplotlib.pyplot as plt
-plt.figure(figsize=(10, 4))
-librosa.display.specshow(mfccs, x_axis='time')
-plt.colorbar()  
-plt.title('MFCC')
-plt.tight_layout()
-plt.show()"""
+            if winch2 >= 0:
+                print("Extract winch2 feature")
+                winch_feature = extract_winch(audio=audio, sample_rate=sample_rate, time=winch2)
+                features = np.vstack([features, winch_feature])
+                labels = np.vstack([labels, [1, 0]])
 
-            entry = GroundTruthEntry(filename=audio_filename, winch1=winch1, winch2=winch2, data=mfccs.T)
-            training_set.append(entry)
+            audio_noise = extract_background_audio(audio=audio, sample_rate=sample_rate, winch1=winch1, winch2=winch2)
+            for i in range(1, noise_samples):
+                print("Extract background feature: " + str(i))
+                noise_feature = extract_background_feature(audio=audio_noise, sample_rate=sample_rate)
+                features = np.vstack([features, noise_feature])
+                labels = np.vstack([labels, [0, 1]])
 
-            break
-
-
-        #with open(filename + '.file', 'wb') as fp:
-        #    pickle.dump(training_set, fp)
+        with open(filename + '.file', 'wb') as fp:
+            pickle.dump((features, labels), fp)
 
     else:
-
         file = open(filename + ".file", 'rb')
-        training_set = pickle.load(file)
+        features, labels = pickle.load(file)
         file.close()
 
-    return training_set
+    return features, labels
 
-def next_batch(training, positives, batch_size):
 
-    batch = []
-    labels = []
+train_features, train_labels = extract_feature_set(filename='ground-truth.csv')
+print(train_features.shape)
+print(train_labels.shape)
 
-    ratio = 1/2
+test_features, test_labels = extract_feature_set(filename='test-truth.csv', noise_samples=30)
+print(test_features.shape)
+print(test_labels.shape)
 
-    for _ in range(0, int(batch_size * ratio)):
-        positive = positives[random.randint(0, len(positives) - 1)]
-        batch.append(positive)
-        labels.append([1, 0])
+training_epochs = 5000
+n_dim = train_features.shape[1]
+n_classes = 2
+n_hidden_units_one = 280
+n_hidden_units_two = 300
+sd = 1 / np.sqrt(n_dim)
+learning_rate = 0.01
 
-    for _ in range(0, int(batch_size * (1 - ratio))):
-        entry_index = random.randint(0, len(training) - 1)
-        entry = training[entry_index]
-        pos = random.randint(0, entry.data.shape[0] - 1)
+X = tf.placeholder(tf.float32, [None, n_dim])
+Y = tf.placeholder(tf.float32, [None, n_classes])
 
-        if pos != entry.winch1 and pos != entry.winch2:
-            batch.append(entry.get_data_for(pos))
-            labels.append([0, 1])
+W_1 = tf.Variable(tf.random_normal([n_dim, n_hidden_units_one], mean=0, stddev=sd))
+b_1 = tf.Variable(tf.random_normal([n_hidden_units_one], mean=0, stddev=sd))
+h_1 = tf.nn.tanh(tf.matmul(X, W_1) + b_1)
 
-    return batch, labels
+W_2 = tf.Variable(tf.random_normal([n_hidden_units_one, n_hidden_units_two], mean=0, stddev=sd))
+b_2 = tf.Variable(tf.random_normal([n_hidden_units_two], mean=0, stddev=sd))
+h_2 = tf.nn.sigmoid(tf.matmul(h_1, W_2) + b_2)
 
-def extract_positives(training):
-    positives = []
-    for entry in training:
-        if entry.winch1 >= 0:
-            positives.append(entry.get_data_for(entry.winch1))
-        if entry.winch2 >= 0:
-            positives.append(entry.get_data_for(entry.winch2))
-    return positives
+W = tf.Variable(tf.random_normal([n_hidden_units_two, n_classes], mean=0, stddev=sd))
+b = tf.Variable(tf.random_normal([n_classes], mean=0, stddev=sd))
+y_ = tf.nn.softmax(tf.matmul(h_2, W) + b)
 
-def test_batch(test):
-    batch = []
-    labels = []
-    for entry in test:
-        if entry.winch1 >= 0:
-            batch.append(entry.get_data_for(entry.winch1))
-            labels.append([1, 0])
-        if entry.winch2 >= 0:
-            batch.append(entry.get_data_for(entry.winch2))
-            labels.append([1, 0])
+init = tf.global_variables_initializer()
 
-        for pos in range(0, entry.data.shape[0]):
-            if pos != entry.winch1 and pos != entry.winch2:
-                batch.append(entry.get_data_for(pos))
-                labels.append([0, 1])
+cost_function = tf.reduce_mean(-tf.reduce_sum(Y * tf.log(y_), reduction_indices=[1]))
+optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost_function)
 
-    return batch, labels
+correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(Y, 1))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-training = extract_features(filename='ground-truth.csv')
-positives = extract_positives(training)
-
-learning_rate = 0.1
-num_steps = 1000
-batch_size = 200
-display_step = 100
-
-n_hidden_1 = 10
-n_hidden_2 = 10
-
-num_input = 50*(DELTA_MFCC*2 + 1)
-num_classes = 2
-
-X = tf.placeholder("float", [None, num_input])
-Y = tf.placeholder("float", [None, num_classes])
-
-weights = {
-    'h1': tf.Variable(tf.random_normal([num_input, n_hidden_1])),
-    'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([n_hidden_2, num_classes]))
-}
-biases = {
-    'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-    'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([num_classes]))
-}
-
-def neural_net(x):
-    layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
-    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
-    return out_layer
-
-logits = neural_net(X)
-
-# Define loss and optimizer
-loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-    logits=logits,
-    labels=Y)
-)
-
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-train_op = optimizer.minimize(loss_op)
-
-# Evaluate model (with test logits, for dropout to be disabled)
-
-correct_pred = tf.equal(tf.argmax(logits, 1), tf.argmax(Y, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-
-argmax_prediction = tf.argmax(logits, 1)
-argmax_y = tf.argmax(Y, 1)
-
-TN = tf.count_nonzero(argmax_prediction * argmax_y, dtype=tf.float32)
-TP = tf.count_nonzero((argmax_prediction - 1) * (argmax_y - 1), dtype=tf.float32)
-FN = tf.count_nonzero(argmax_prediction * (argmax_y - 1), dtype=tf.float32)
-FP = tf.count_nonzero((argmax_prediction - 1) * argmax_y, dtype=tf.float32)
-
-prec = tf.divide(TP, tf.add(TP, FP))
-rec = tf.divide(TP, tf.add(TP, FN))
-fscore = tf.scalar_mul(2.0, tf.divide(tf.multiply(prec, rec), tf.add(prec, rec)))
-
-init = tf.initialize_all_variables()
-
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
-with tf.Session(config=tf.ConfigProto(
-  allow_soft_placement=True, log_device_placement=True)) as sess:
-
-    # Run the initializer
+cost_history = np.empty(shape=[1], dtype=float)
+y_true, y_pred = None, None
+with tf.Session() as sess:
     sess.run(init)
+    for epoch in range(training_epochs):
+        if epoch % 50 == 0:
+            print("Training Epoch " + str(epoch))
 
-    for step in range(1, num_steps+1):
-        batch_x, batch_y = next_batch(training=training, positives=positives, batch_size=batch_size)
-        # Run optimization op (backprop)
-        sess.run(train_op, feed_dict={X: batch_x, Y: batch_y})
-        if step % display_step == 0 or step == 1:
-            # Calculate batch loss and accuracy
-            loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x,
-                                                                 Y: batch_y})
-            print("Step " + str(step) + ", Minibatch Loss= " + \
-                  "{:.4f}".format(loss) + ", Training Accuracy= " + \
-                  "{:.3f}".format(acc))
+        _, cost = sess.run([optimizer, cost_function], feed_dict={X: train_features, Y: train_labels})
+        cost_history = np.append(cost_history, cost)
 
-    #oSaver = tf.train.Saver()
-    #oSaver.save(sess, "models/tensorflow.model")
+    y_pred = sess.run(tf.argmax(y_, 1), feed_dict={X: test_features})
+    y_true = sess.run(tf.argmax(test_labels, 1))
 
-    print("Optimization Finished!")
-
-    test = extract_features(filename='test-truth.csv')
-    test_x, test_y = test_batch(test=test)
-
-    prediction = tf.argmax(logits, 1)
-    pred = sess.run(prediction, feed_dict={X: test_x,
-                                            Y: test_y})
-    time = 0
-    lastEntry = test[0]
-    index = 0
-    for i in range(0, len(pred)):
-        if time > lastEntry.data.shape[0]:
-            time = 0
-            lastEntry = test[index]
-            index += 1
-        else:
-            time += 1
-        if pred[i] == 0:
-            print("Filename " + lastEntry.filename + " winch at " +
-                  str(int(time/60)) + ":" + str(time%60) + "s predicted.")
+    saver = tf.train.Saver()
+    save_path = saver.save(sess, "winch_neuralnetwork.file")
 
 
-    # Calculate accuracy for MNIST test images
-    print("Testing Accuracy:", \
-        sess.run([accuracy], feed_dict={X: test_x,
-                                      Y: test_y}))
-    print("Testing Precision:", \
-        sess.run([prec], feed_dict={X: test_x,
-                                      Y: test_y}))
-    print("Testing Recall:", \
-        sess.run([rec], feed_dict={X: test_x,
-                                      Y: test_y}))
-    print("Testing F-Score:", \
-        sess.run([fscore], feed_dict={X: test_x,
-                                      Y: test_y}))
-    print("Testing True Positives & True Negatives:", \
-        sess.run([TP, TN], feed_dict={X: test_x,
-                                      Y: test_y}))
-    print("Testing False Positives & False Negatives:", \
-        sess.run([FP, FN], feed_dict={X: test_x,
-                                      Y: test_y}))
+fig = plt.figure(figsize=(10,8))
+plt.plot(cost_history)
+plt.ylabel("Cost")
+plt.xlabel("Iterations")
+plt.axis([0,training_epochs,0,np.max(cost_history)])
+plt.show()
+
+p,r,f,s = precision_recall_fscore_support(y_true, y_pred, average='micro')
+
+print("Sample Size: " + str(len(y_true)))
+print("Precision:", round(p,3))
+print("Recall:", round(r,3))
+print("F-Score:", round(f,3))
