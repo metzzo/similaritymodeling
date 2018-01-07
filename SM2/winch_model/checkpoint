@@ -1,0 +1,2 @@
+model_checkpoint_path: "C:\\Users\\rfischer\\CloudStation\\MasterStudium\\WS2017\\SM\\Repo\\SM2/winch_model/winch_detection_model.tf"
+all_model_checkpoint_paths: "C:\\Users\\rfischer\\CloudStation\\MasterStudium\\WS2017\\SM\\Repo\\SM2/winch_model/winch_detection_model.tf"

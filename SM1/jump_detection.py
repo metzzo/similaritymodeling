@@ -34,7 +34,7 @@ with tf.Session() as sess:
     y_pred = sess.run(tf.argmax(y_, 1), feed_dict={X: test_features})
     y_true = sess.run(tf.argmax(test_labels, 1))
 
-    save_path = saver.save(sess, os.path.abspath('.') + "/jump_detection_model.tf")
+    save_path = saver.save(sess, os.path.abspath('.') + "/jump_model/jump_detection_model.tf")
 
 
 fig = plt.figure(figsize=(10,8))

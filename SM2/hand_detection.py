@@ -6,26 +6,34 @@ import cv2
 import os
 import tensorflow as tf
 
-from SM1.jump_detection_model import load_jump_detection_model, extract_feature as jump
+from SM1.jump_detection_model import load_jump_detection_model, extract_feature as jump_extract_feature
 from SM2.skin_detection_model import load_skin_detection_model
-
+from SM2.winch_detection_model import load_winch_detection_model
 
 skin_graph = tf.Graph()
 with skin_graph.as_default():
     X_skin, _, y_skin, _, _, _, _ = load_skin_detection_model()
+
+winch_graph = tf.Graph()
+with winch_graph.as_default():
+    X_winch, _, y_winch, _, _, _, _ = load_winch_detection_model()
 
 jump_graph = tf.Graph()
 with jump_graph.as_default():
     X_jump, _, y_jump, _, _, _, _ = load_jump_detection_model()
     saver_jump = tf.train.Saver()
     sess_jump = tf.Session()
-    saver_jump.restore(sess_jump, os.path.abspath('.') + "/../SM1/jump_detection_model.tf")
+    saver_jump.restore(sess_jump, os.path.abspath('.') + "/../SM1/jump_model/jump_detection_model.tf")
 
 with skin_graph.as_default():
     saver_skin = tf.train.Saver()
     sess_skin = tf.Session()
-    saver_skin.restore(sess_skin, os.path.abspath('.') + "/skin_detection_model.tf")
+    saver_skin.restore(sess_skin, os.path.abspath('.') + "/skin_model/skin_detection_model.tf")
 
+with winch_graph.as_default():
+    winch_skin = tf.train.Saver()
+    sess_winch = tf.Session()
+    saver_skin.restore(sess_winch, os.path.abspath('.') + "/winch_model/winch_detection_model.tf")
 
 
 def amount_of_skin(frame):
@@ -78,10 +86,14 @@ while(cap.isOpened()):
     current_second = int(cap.get(cv2.CAP_PROP_POS_MSEC)/1000)
 
     is_jump = 1
+    is_winch = 1
     if current_second > 2 and current_second < len(audio)/sample_rate - 2:
         audio_delta = audio[(current_second - 1)*sample_rate:(current_second + 1)*sample_rate]
-        input = np.array([jump.extract_feature(X=audio_delta, sample_rate=sample_rate)])
+        input = np.array([jump_extract_feature(X=audio_delta, sample_rate=sample_rate)])
         is_jump = sess_jump.run(tf.argmax(y_jump, 1), feed_dict={X_jump: input})[0]
+
+        # to save some time the same input is used, if the feature space of winch vs jump changes the features have to be recalculated
+        is_winch = sess_winch.run(tf.argmax(y_winch, 1), feed_dict={X_winch: input})[0]
 
     original_frame = frame
 
@@ -213,6 +225,7 @@ while(cap.isOpened()):
 
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(original_frame, 'Jump' if is_jump == 0 else "No Jump", (20, 80), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
+    cv2.putText(original_frame, 'Winch' if is_jump == 0 else "No Winch", (20, 160), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
     cv2.imshow("images", np.hstack([frame, original_frame, skin]))
 
