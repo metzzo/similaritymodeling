@@ -12,18 +12,64 @@ import librosa.display
 
 def extract_feature(X, sample_rate):
     stft = np.abs(librosa.stft(X))
-    mfccs = np.mean(librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=40).T, axis=0)
-    chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sample_rate).T, axis=0)
-    mel = np.mean(librosa.feature.melspectrogram(X, sr=sample_rate).T, axis=0)
-    contrast = np.mean(librosa.feature.spectral_contrast(S=stft, sr=sample_rate).T, axis=0)
-    tonnetz = np.mean(librosa.feature.tonnetz(y=librosa.effects.harmonic(X), sr=sample_rate).T, axis=0)
 
-    return np.hstack([mfccs, chroma, mel, contrast, tonnetz])
+    mfccs = librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=40).T
+
+    mfccs_mean = np.mean(mfccs, axis=0)
+    mfccs_std = np.std(mfccs, axis=0)
+
+    chroma = librosa.feature.chroma_stft(S=stft, sr=sample_rate).T
+    chroma_mean = np.mean(chroma, axis=0)
+    chroma_std = np.std(chroma, axis=0)
+
+    mel = librosa.feature.melspectrogram(X, sr=sample_rate).T
+    mel_mean = np.mean(mel, axis=0)
+    mel_std = np.std(mel, axis=0)
+
+    contrast = librosa.feature.spectral_contrast(S=stft, sr=sample_rate).T
+    contrast_mean = np.mean(contrast, axis=0)
+    contrast_std = np.std(contrast, axis=0)
+
+    tonnetz = librosa.feature.tonnetz(y=librosa.effects.harmonic(X), sr=sample_rate).T
+    tonnetz_mean = np.mean(tonnetz, axis=0)
+    tonnetz_std = np.std(tonnetz, axis=0)
+
+    zcr = librosa.feature.zero_crossing_rate(y=X).T
+    zcr_mean = np.mean(zcr, axis=0)
+    zcr_std = np.std(zcr, axis=0)
+
+    rmse = librosa.feature.rmse(y=X).T
+    rmse_mean = np.mean(rmse, axis=0)
+    rmse_std = np.mean(rmse, axis=0)
+
+    oenv = librosa.onset.onset_strength(y=X, sr=sample_rate, feature=librosa.cqt).T
+    oenv = oenv / oenv.max()
+    oenv_mean = np.mean(oenv, axis=0)
+    oenv_std = np.mean(oenv, axis=0)
+
+    return np.hstack([
+        mfccs_mean,
+        mfccs_std,
+        chroma_mean,
+        chroma_std,
+        mel_mean,
+        mel_std,
+        contrast_mean,
+        contrast_std,
+        tonnetz_mean,
+        tonnetz_std,
+        zcr_mean,
+        zcr_std,
+        rmse_mean,
+        rmse_std,
+        oenv_mean,
+        oenv_std
+    ])
 
 def load_jump_detection_model():
     with tf.variable_scope('jump'):
         JUMP_DELTA = 1
-        BACKGROUND_NOISE_SAMPLES = 5
+        BACKGROUND_NOISE_SAMPLES = 6
         BACKGROUND_NOISE_DURATION = JUMP_DELTA * 2
 
         def get_jump_frame(audio, sample_rate, time):
@@ -31,7 +77,7 @@ def load_jump_detection_model():
             end_time = (time + JUMP_DELTA) * sample_rate
             return audio[start_time:end_time]
 
-        def extract_jump(audio, sample_rate, time):
+        def extract_at_time(audio, sample_rate, time):
             audio = get_jump_frame(audio=audio, sample_rate=sample_rate, time=time)
             return extract_feature(X=audio, sample_rate=sample_rate)
 
@@ -64,7 +110,7 @@ def load_jump_detection_model():
 
         def extract_feature_set(filename, noise_samples=BACKGROUND_NOISE_SAMPLES):
 
-            features = np.empty((0, 193))
+            features = np.empty((0, 392))
             labels = np.empty((0, 2))
 
             if not os.path.isfile(filename + '.file'):
@@ -72,6 +118,8 @@ def load_jump_detection_model():
 
                 for index, row in df.iterrows():
                     audio_filename = row['name']
+                    winch1 = row['w1']
+                    winch2 = row['w2']
                     jump1 = row['j1']
                     jump2 = row['j2']
 
@@ -83,18 +131,39 @@ def load_jump_detection_model():
 
                     if jump1 >= 0:
                         print("Extract jump1 feature")
-                        jump_feature = extract_jump(audio=audio, sample_rate=sample_rate, time=jump1)
+                        jump_feature = extract_at_time(audio=audio, sample_rate=sample_rate, time=jump1)
                         features = np.vstack([features, jump_feature])
                         labels = np.vstack([labels, [1, 0]])
+
+                        jump_feature = extract_at_time(audio=audio, sample_rate=sample_rate, time=jump1 - JUMP_DELTA*2)
+
+                        features = np.vstack([features, jump_feature])
+                        labels = np.vstack([labels, [0, 1]])
+
+                        jump_feature = extract_at_time(audio=audio, sample_rate=sample_rate, time=jump1 + JUMP_DELTA*2)
+                        features = np.vstack([features, jump_feature])
+                        labels = np.vstack([labels, [0, 1]])
 
                     if jump2 >= 0:
                         print("Extract jump2 feature")
-                        jump_feature = extract_jump(audio=audio, sample_rate=sample_rate, time=jump2)
+                        jump_feature = extract_at_time(audio=audio, sample_rate=sample_rate, time=jump2)
                         features = np.vstack([features, jump_feature])
                         labels = np.vstack([labels, [1, 0]])
 
+                    if winch1 >= 0:
+                        print("Extract winch1 feature")
+                        winch_feature = extract_at_time(audio=audio, sample_rate=sample_rate, time=winch1)
+                        features = np.vstack([features, winch_feature])
+                        labels = np.vstack([labels, [0, 1]])
+
+                    if winch2 >= 0:
+                        print("Extract winch2 feature")
+                        winch_feature = extract_at_time(audio=audio, sample_rate=sample_rate, time=winch2)
+                        features = np.vstack([features, winch_feature])
+                        labels = np.vstack([labels, [0, 1]])
+
                     audio_noise = extract_background_audio(audio=audio, sample_rate=sample_rate, jump1=jump1, jump2=jump2)
-                    for i in range(1, noise_samples):
+                    for i in range(0, noise_samples):
                         print("Extract background feature: " + str(i))
                         noise_feature = extract_background_feature(audio=audio_noise, sample_rate=sample_rate)
                         features = np.vstack([features, noise_feature])
@@ -114,7 +183,7 @@ def load_jump_detection_model():
         print(train_features.shape)
         print(train_labels.shape)
 
-        test_features, test_labels = extract_feature_set(filename='test-truth.csv', noise_samples=30)
+        test_features, test_labels = extract_feature_set(filename='test-truth.csv', noise_samples=1000)
         print(test_features.shape)
         print(test_labels.shape)
 

@@ -54,9 +54,9 @@ print("F-Score:", round(f,3))
 """
 Result on my machine:
 
-Sample Size: 422
-Precision: 0.986
-Recall: 0.986
-F-Score: 0.986
+Sample Size: 14030
+Precision: 1.0
+Recall: 0.997
+F-Score: 0.998
 
 """
