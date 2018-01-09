@@ -1,0 +1,9 @@
+2017/10/10 0900-1100 Attending Lecture
+2017/10/13 0900-1100 Attending Lecture
+2017/10/19 1330-1530 Attending Lecture
+2017/10/20 0900-1100 Attending Lecture
+2017/11/03 1000-1700 Building a naive Prototype
+2017/11/04 1200-1400 Debugging Algorithm, Examining Dataset
+2017/11/17 1000-1630 Working with FFT as Features
+2017/11/24 1000-1630 Building a Neural Network approach
+2018/01/09 2000-2300 Discussion, Writing Approach Documentation
