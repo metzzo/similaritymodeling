@@ -30,7 +30,7 @@ The next try was using the following scheme:
  * Now we take the best match of the available contours (using fixed tresholds). If there is no contour matching, the thresholds are relaxed a few times. If nothing is found, now contour is returned.
  * Draw the bounding boxes of the best 2 matches as possible hands. Since there is some detection locality expected, the bounding boxes are averaged, in order to smooth out the result. 
 
-Possible improvments:
+## Improvments:
  * Try to incorporate the mountings
  * Make the thresholding adaptive
  
@@ -45,8 +45,8 @@ For each video file we extracted "sound snippets" of 2 seconds. The following sn
  * 2 seconds around the winch usage (if exists)
  * 2 seconds of 6 random samples of "background noise", where no notable event happens.
 
-To avoid overfitting the ratio of positive examples and negative examples was chosen to be not too high. Additionally, even though we could use a 3 second snippet time, we actively chose to use 2 seconds, to avoid
-to get a "fuzzy" ground truth. Since a jump and winchd event is a rather discrete event and if we considered audio as a jump, which was clearly not a jump we feared that the accuracy might drop.
+To avoid overfitting the ratio of positive examples and negative examples was chosen to be not too unbalanced (to avoid overfitting). Additionally, even though we could use a 3 second snippet time, we actively chose to use 2 seconds, to avoid
+to get a "fuzzy" ground truth. Since a jump and winch event is a rather discrete event and if we considered audio as a jump, which was clearly not a jump we feared that the accuracy might drop.
 
 For each of these samples we calculated the following features:
  * Absolute Short-Time Fourier Transform
@@ -58,11 +58,11 @@ For each of these samples we calculated the following features:
  * Mean and standard deviation of the Root-Mean-Square Energy
  * Mean and standard deviation of the normalized onset strength
 
-Basically we shoved all the features we could get from the snippets and hoped that our neural network would generalize well on these.
+Basically we shoved all the features we could get from the snippets and hoped that our neural network would generalize well on these. Which it luckily did. Since we were using the mean and standard deviation for many features it was important that our snippets contain as much "jump audio" as possible.
 
-This added on a total number of 435 training samples.
+This added to a total number of 435 training samples. Each sample had a classification if it is a jump/winch usage or not.
 
-For testing we used the same architecture, but instead of extracting of 6 random noise samples, we chose to extract 1000 noise samples. Since we needed to have a reasonable approximation of the other sounds that occur in the test set.
+For testing we used the same architecture, but instead of extracting of 6 random noise samples, we chose to extract 1000 noise samples. Since we needed to have a reasonable approximation of the other sounds that occur in the video.
 We designated 10 videos for the testing set and the rest for the training set. Since the test data is quite sparse for positive cases, we could not afford to put more to the side.
 
 ## Training
@@ -91,10 +91,14 @@ Problem with the method of our validation is, that each "sample" is weighted the
 
  * Try different parameters (especially the number of background noise samples of 6 was chosen rather arbitrary, maybe more could improve the quality even more)
  * Use more "interesting" points for training. Especially the audio surrounding sounds is sometimes classified incorrectly. Incorporating these also as events could increase accuracy. On the other hand the ground truth is very noisy, a jump is actually not a point in time, but rather a time period (even though it is very short). The problem arises with this: Is the annotated time the beginning of the jump? Middle of the jump? End of the jump? The more we rely on this fact the fuzzier the ground truth may become. Since "false negatives" might sneak in, were we classify parts which are clearly not a jump as a jump.
- * Use deep learning approaches. 
+ * Use deep learning approaches
 
 # Phase 4: Making it visible 
 
-Wiring it all together. Saving and restoring a TensorFlow model is not as trivial as it might sound (clashes in variable names inside the graph are to be expected), which took quite some time. The Hand Detection displays whether a jump/winch usage is being detected at the current time.
+Wiring it all together. Saving and restoring a TensorFlow model is not as trivial as it might sound - clashes in variable names inside the graph are to be expected -, which took quite some time to find the right fix for. The Hand Detection displays whether a jump/winch usage is being detected at the current time. Which also needed to be programmed.
 Finally an export was written which captured the interesting time periods (around jumps, winch usage etc.) and saved them as video files.
+
+\*.jump{0|1}.avi contain the jumps
+\*.winch{0|1}.avi contain the winch usages
+\*.empty.avi contain the first few seconds, if there is no jump/winch usage.
 
