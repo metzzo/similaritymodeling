@@ -20,19 +20,19 @@ The next try was using the following scheme:
  * simple HSV color based thresholding
  * Applying a gaussian blur to the mask
  * Extract the mask
- * This returns a more precise skin color region
  * Apply the following morphological operations: MORPH_ELLIPSE and MORPH_CLOSE to fight noise in the input signal
  * Find all contours in the input image which is classified as skin
  * Filter only contours that have reasonable area (not too small, not too big)
  * For each contour we extract the following metrics:
 	* Skin Ratio: Amount of skin inside the bounding rect relative to the total area. The skin is now detected using a neural network we trained based on a publicly available dataset ( https://archive.ics.uci.edu/ml/datasets/Skin+Segmentation )
 	* Edge Ratio: Since skin is quite smooth and do not expect many edges, we apply a canny operator on the extracted skin relative to the total area
- * Now we take the best match of the available contours (using fixed tresholds). If there is no contour matching, the thresholds are relaxed a few times. If nothing is found, now contour is returned.
+ * Now we take the best match of the available contours (using fixed tresholds). If there is no contour matching, the thresholds are relaxed a few times. If nothing is found, no contour is returned.
  * Draw the bounding boxes of the best 2 matches as possible hands. Since there is some detection locality expected, the bounding boxes are averaged, in order to smooth out the result. 
 
-## Improvments:
+## Improvements:
  * Try to incorporate the mountings
  * Make the thresholding adaptive
+ * DNN approach (a proper ground truth is needed)
  
 # Phase 3: Similarity Modeling 1 and 2: Jump and Winch Detection
 
@@ -45,7 +45,7 @@ For each video file we extracted "sound snippets" of 2 seconds. The following sn
  * 2 seconds around the winch usage (if exists)
  * 2 seconds of 6 random samples of "background noise", where no notable event happens.
 
-To avoid overfitting the ratio of positive examples and negative examples was chosen to be not too unbalanced (to avoid overfitting). Additionally, even though we could use a 3 second snippet time, we actively chose to use 2 seconds, to avoid
+To avoid overfitting the ratio of positive examples and negative examples was chosen to be not too unbalanced (in order to avoid overfitting). Additionally, even though we could use a 3 second snippet time, we actively chose to use 2 seconds, to avoid
 to get a "fuzzy" ground truth. Since a jump and winch event is a rather discrete event and if we considered audio as a jump, which was clearly not a jump we feared that the accuracy might drop.
 
 For each of these samples we calculated the following features:
